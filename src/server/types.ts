@@ -8,6 +8,7 @@ export type {
   Task,
   Comment,
   TaskDependency,
+  DependencyInfo,
   TaskStatus,
   TaskPriority,
   TaskRole,

@@ -47,6 +47,12 @@ export interface TaskDependency {
   depends_on: string;
 }
 
+export interface DependencyInfo {
+  id: string;
+  title: string;
+  status: TaskStatus;
+}
+
 export type WsEvent =
   | { type: 'task:created'; payload: Task }
   | { type: 'task:updated'; payload: Task }

@@ -64,6 +64,31 @@ Workspace: [All Workspaces v] [+]    Project: [All Projects v] [+]    Role: [All
 
 - `cancelled` 태스크는 칸반 컬럼에 표시하지 않음
 - Done 컬럼: `updated_at DESC` 정렬 (최근 완료 태스크가 맨 위)
+- Done 컬럼: 서버 페이지네이션 (나머지 3개 컬럼은 전체 로드)
+
+#### Done 컬럼 검색 + 페이지네이션
+
+Done 컬럼은 완료된 태스크가 무한히 쌓이는 유일한 컬럼이므로, 별도의 검색과 페이지네이션을 제공한다.
+
+```
+Victory Done                          [13]
++------------------------------------------+
+| [돋보기] Search completed tasks...       |
++------------------------------------------+
+| [카드1]                                  |
+| [카드2]                                  |
+| ...                                      |
+| [카드20]                                 |
++------------------------------------------+
+|       < 1 ... 4 5 6 ... 20 >            |
++------------------------------------------+
+```
+
+- **검색**: 컬럼 헤더 아래 검색 입력. 제목과 설명을 SQLite LIKE로 검색. 300ms debounce 적용.
+- **페이지네이션**: 한 페이지 20개 (DONE_PAGE_SIZE). 5개 번호 표시 (DONE_PAGE_WINDOW) + ellipsis + 첫/마지막 페이지.
+- **뱃지**: 현재 페이지가 아닌 전체 done 개수 표시.
+- **API**: `GET /projects/:id/tasks/done?page=1&page_size=20&search=검색어` (프로젝트별), `GET /tasks/done?project_ids=a,b&page=1` (All Projects 모드).
+- **상수**: `src/lib/constants.ts`에서 `DONE_PAGE_SIZE`, `DONE_PAGE_WINDOW`, `DONE_SEARCH_DEBOUNCE_MS` 변경 가능.
 
 ### 푸터
 
@@ -171,8 +196,9 @@ src/
 │   ├── globals.css             # Tailwind v4 + 역할별 테마 + 게임카드 스타일
 │   └── icon.png                # 파비콘 (Next.js 자동 감지)
 ├── components/
-│   ├── KanbanBoard.tsx          # 4개 컬럼 렌더링
-│   ├── KanbanColumn.tsx         # 단일 컬럼 (헤더 + 카드 목록)
+│   ├── KanbanBoard.tsx          # 4개 컬럼 렌더링 (Done은 별도 props)
+│   ├── KanbanColumn.tsx         # 단일 컬럼 (Done: 검색 + 페이지네이션 포함)
+│   ├── Pagination.tsx           # 페이지 번호 네비게이션 (< 1 ... 4 5 6 ... 20 >)
 │   ├── TaskCard.tsx             # 게임카드 스타일 태스크 카드
 │   ├── TaskDetailModal.tsx      # 태스크 상세 + 댓글 + 의존관계
 │   ├── FilterBar.tsx            # Workspace/Project/Role 필터 + 생성 기능
@@ -181,6 +207,7 @@ src/
 │   └── useWebSocket.ts          # WebSocket 연결 훅 (이벤트 배치 + 자동 재연결)
 └── lib/
     ├── api.ts                   # REST API 클라이언트
+    ├── constants.ts             # 프론트엔드 상수 (DONE_PAGE_SIZE 등)
     └── utils.ts                 # formatRelativeTime, cn() 유틸
 ```
 

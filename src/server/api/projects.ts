@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { createProject, getProjectById, getTasksByProject, updateProjectSettings } from '../db/index.js';
+import { createProject, getProjectById, getTasksByProject, getDoneTasksPaginated, updateProjectSettings } from '../db/index.js';
 import { VALID_STATUSES, VALID_ROLES, MAX_NAME_LENGTH, MAX_DESCRIPTION_LENGTH } from '../constants.js';
 import type { CreateProjectInput, TaskStatus, TaskRole } from '../types.js';
 
@@ -68,6 +68,20 @@ app.get('/projects/:id/tasks', (c) => {
 
   const tasks = getTasksByProject(projectId, filters);
   return c.json(tasks);
+});
+
+// ============================================================
+// GET /projects/:id/tasks/done - paginated done tasks for a project
+// ============================================================
+app.get('/projects/:id/tasks/done', (c) => {
+  const projectId = c.req.param('id');
+  const page = Math.max(1, parseInt(c.req.query('page') ?? '1', 10) || 1);
+  const pageSize = Math.min(100, Math.max(1, parseInt(c.req.query('page_size') ?? '20', 10) || 20));
+  const search = c.req.query('search')?.trim() || undefined;
+  const role = c.req.query('role')?.trim() || undefined;
+
+  const result = getDoneTasksPaginated([projectId], { page, pageSize, search, role });
+  return c.json({ tasks: result.tasks, total: result.total, total_all: result.total_all, page, page_size: pageSize });
 });
 
 // ============================================================

@@ -1,4 +1,4 @@
-import type { Comment, Project, Task, TaskDependency, Workspace } from '@/types';
+import type { Comment, DependencyInfo, Project, Task, TaskDependency, Workspace } from '@/types';
 
 const BASE_URL = '';
 
@@ -55,8 +55,8 @@ export async function getTasks(
 
 export async function getTask(
   taskId: string,
-): Promise<Task & { comments: Comment[]; dependencies: string[]; dependents: string[] }> {
-  return request<Task & { comments: Comment[]; dependencies: string[]; dependents: string[] }>(`/api/tasks/${taskId}`);
+): Promise<Task & { comments: Comment[]; dependencies: DependencyInfo[]; dependents: DependencyInfo[] }> {
+  return request<Task & { comments: Comment[]; dependencies: DependencyInfo[]; dependents: DependencyInfo[] }>(`/api/tasks/${taskId}`);
 }
 
 export async function getTaskComments(taskId: string): Promise<Comment[]> {
@@ -82,6 +82,41 @@ export async function updateProjectSettings(
       body: JSON.stringify(settings),
     },
   );
+}
+
+export interface DoneTasksResponse {
+  tasks: Task[];
+  total: number;
+  total_all: number;
+  page: number;
+  page_size: number;
+}
+
+export async function getDoneTasks(
+  projectId: string,
+  options?: { page?: number; page_size?: number; search?: string; role?: string },
+): Promise<DoneTasksResponse> {
+  const params = new URLSearchParams();
+  if (options?.page) params.set('page', String(options.page));
+  if (options?.page_size) params.set('page_size', String(options.page_size));
+  if (options?.search) params.set('search', options.search);
+  if (options?.role) params.set('role', options.role);
+  const query = params.toString() ? `?${params.toString()}` : '';
+  return request<DoneTasksResponse>(`/api/projects/${projectId}/tasks/done${query}`);
+}
+
+export async function getAllDoneTasks(
+  projectIds: string[],
+  options?: { page?: number; page_size?: number; search?: string; role?: string },
+): Promise<DoneTasksResponse> {
+  const params = new URLSearchParams();
+  if (projectIds.length > 0) params.set('project_ids', projectIds.join(','));
+  if (options?.page) params.set('page', String(options.page));
+  if (options?.page_size) params.set('page_size', String(options.page_size));
+  if (options?.search) params.set('search', options.search);
+  if (options?.role) params.set('role', options.role);
+  const query = params.toString() ? `?${params.toString()}` : '';
+  return request<DoneTasksResponse>(`/api/tasks/done${query}`);
 }
 
 export async function addTaskDependency(

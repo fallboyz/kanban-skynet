@@ -9,9 +9,10 @@ import {
   createComment,
   addDependency,
   removeDependency,
-  getDependencies,
-  getDependents,
+  getDependenciesWithInfo,
+  getDependentsWithInfo,
   wouldCreateCycle,
+  getDoneTasksPaginated,
 } from '../db/index.js';
 import { broadcast } from '../ws.js';
 import {
@@ -62,6 +63,27 @@ function buildUpdateInput(body: TaskPatchBody): UpdateTaskInput {
 
 
 // ============================================================
+// GET /tasks/done - paginated done tasks across multiple projects
+// (All Projects mode: project_ids passed as comma-separated query param)
+// ============================================================
+app.get('/tasks/done', (c) => {
+  const projectIdsParam = c.req.query('project_ids') ?? '';
+  const projectIds = projectIdsParam.split(',').map((s) => s.trim()).filter(Boolean);
+
+  if (projectIds.length === 0) {
+    return c.json({ tasks: [], total: 0, total_all: 0, page: 1, page_size: 20 });
+  }
+
+  const page = Math.max(1, parseInt(c.req.query('page') ?? '1', 10) || 1);
+  const pageSize = Math.min(100, Math.max(1, parseInt(c.req.query('page_size') ?? '20', 10) || 20));
+  const search = c.req.query('search')?.trim() || undefined;
+  const role = c.req.query('role')?.trim() || undefined;
+
+  const result = getDoneTasksPaginated(projectIds, { page, pageSize, search, role });
+  return c.json({ tasks: result.tasks, total: result.total, total_all: result.total_all, page, page_size: pageSize });
+});
+
+// ============================================================
 // GET /tasks/:id - return task with its comments + dependencies
 // ============================================================
 app.get('/tasks/:id', (c) => {
@@ -73,8 +95,8 @@ app.get('/tasks/:id', (c) => {
   }
 
   const comments = getCommentsByTask(id);
-  const dependencies = getDependencies(id);
-  const dependents = getDependents(id);
+  const dependencies = getDependenciesWithInfo(id);
+  const dependents = getDependentsWithInfo(id);
   return c.json({ ...task, comments, dependencies, dependents });
 });
 

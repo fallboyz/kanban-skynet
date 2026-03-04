@@ -1,8 +1,9 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Comment, Project, Task, Workspace, WsEvent } from '@/types';
+import type { Comment, DependencyInfo, Project, Task, Workspace, WsEvent } from '@/types';
 import * as api from '@/lib/api';
+import { DONE_PAGE_SIZE, DONE_SEARCH_DEBOUNCE_MS } from '@/lib/constants';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { StatsBar } from '@/components/StatsBar';
 import { FilterBar } from '@/components/FilterBar';
@@ -13,10 +14,17 @@ import { TaskDetailModal } from '@/components/TaskDetailModal';
 const RELATIVE_TIME_REFRESH_MS = 60_000;
 
 export default function HomePage() {
-  // 데이터 상태
+  // 데이터 상태 (ready + in_progress + review — done 제외)
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
+
+  // Done 상태 (서버 페이지네이션)
+  const [doneTasks, setDoneTasks] = useState<Task[]>([]);
+  const [doneTotal, setDoneTotal] = useState(0);         // 검색 결과 수 (페이지네이션용)
+  const [doneTotalAll, setDoneTotalAll] = useState(0);   // 전체 done 수 (StatsBar용)
+  const [donePage, setDonePage] = useState(1);
+  const [doneSearch, setDoneSearch] = useState('');
 
   // 필터 상태
   const [selectedWorkspace, setSelectedWorkspace] = useState<string>('');
@@ -29,8 +37,8 @@ export default function HomePage() {
   // 모달 상태
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [taskComments, setTaskComments] = useState<Comment[]>([]);
-  const [taskDependencies, setTaskDependencies] = useState<string[]>([]);
-  const [taskDependents, setTaskDependents] = useState<string[]>([]);
+  const [taskDependencies, setTaskDependencies] = useState<DependencyInfo[]>([]);
+  const [taskDependents, setTaskDependents] = useState<DependencyInfo[]>([]);
 
   // 상대시간 갱신용 tick
   const [, setTick] = useState(0);
@@ -38,15 +46,58 @@ export default function HomePage() {
   // 현재 필터 상태를 ref로 유지 (WebSocket 콜백에서 재연결 없이 참조)
   const selectedProjectRef = useRef(selectedProject);
   selectedProjectRef.current = selectedProject;
-  const selectedRoleRef = useRef(selectedRole);
-  selectedRoleRef.current = selectedRole;
   const projectsRef = useRef(projects);
   projectsRef.current = projects;
+  const donePageRef = useRef(donePage);
+  donePageRef.current = donePage;
+  const doneSearchRef = useRef(doneSearch);
+  doneSearchRef.current = doneSearch;
+  const selectedRoleRef = useRef(selectedRole);
+  selectedRoleRef.current = selectedRole;
 
   // AbortController for API requests
   const taskAbortRef = useRef<AbortController | null>(null);
+  const doneAbortRef = useRef<AbortController | null>(null);
 
-  // 태스크 데이터 재로드 (AbortController 적용)
+  // Debounce timer for done search
+  const doneSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Done 태스크 재로드
+  const reloadDoneTasks = useCallback((page?: number, search?: string) => {
+    doneAbortRef.current?.abort();
+    const controller = new AbortController();
+    doneAbortRef.current = controller;
+
+    const currentProject = selectedProjectRef.current;
+    const currentProjects = projectsRef.current;
+    const p = page ?? donePageRef.current;
+    const s = search ?? doneSearchRef.current;
+    const r = selectedRoleRef.current || undefined;
+
+    const opts = { page: p, page_size: DONE_PAGE_SIZE, search: s || undefined, role: r };
+    let fetchDone: Promise<api.DoneTasksResponse>;
+    if (currentProject) {
+      fetchDone = api.getDoneTasks(currentProject, opts);
+    } else if (currentProjects.length > 0) {
+      fetchDone = api.getAllDoneTasks(currentProjects.map((pr) => pr.id), opts);
+    } else {
+      fetchDone = Promise.resolve({ tasks: [], total: 0, total_all: 0, page: 1, page_size: DONE_PAGE_SIZE });
+    }
+
+    fetchDone
+      .then((res) => {
+        if (controller.signal.aborted) return;
+        setDoneTasks(res.tasks);
+        setDoneTotal(res.total);
+        setDoneTotalAll(res.total_all);
+      })
+      .catch((err) => {
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        console.error(err);
+      });
+  }, []);
+
+  // 태스크 데이터 재로드 (AbortController 적용) — done 제외, role 필터 없음 (프론트에서 필터링)
   const reloadTasks = useCallback(() => {
     // Cancel any in-flight request
     taskAbortRef.current?.abort();
@@ -54,19 +105,16 @@ export default function HomePage() {
     taskAbortRef.current = controller;
 
     const currentProject = selectedProjectRef.current;
-    const currentRole = selectedRoleRef.current;
     const currentProjects = projectsRef.current;
 
     if (!currentProject) {
       if (currentProjects.length === 0) return;
       Promise.all(
-        currentProjects.map((p) =>
-          api.getTasks(p.id, currentRole ? { role: currentRole } : undefined),
-        ),
+        currentProjects.map((p) => api.getTasks(p.id)),
       )
         .then((results) => {
           if (controller.signal.aborted) return;
-          setTasks(results.flat());
+          setTasks(results.flat().filter((t) => t.status !== 'done'));
         })
         .catch((err) => {
           if (err instanceof DOMException && err.name === 'AbortError') return;
@@ -74,13 +122,10 @@ export default function HomePage() {
         });
     } else {
       api
-        .getTasks(
-          currentProject,
-          currentRole ? { role: currentRole } : undefined,
-        )
+        .getTasks(currentProject)
         .then((data) => {
           if (controller.signal.aborted) return;
-          setTasks(data);
+          setTasks(data.filter((t) => t.status !== 'done'));
         })
         .catch((err) => {
           if (err instanceof DOMException && err.name === 'AbortError') return;
@@ -88,6 +133,12 @@ export default function HomePage() {
         });
     }
   }, []);
+
+  // 전체 데이터 재로드 (non-done + done)
+  const reloadAll = useCallback(() => {
+    reloadTasks();
+    reloadDoneTasks();
+  }, [reloadTasks, reloadDoneTasks]);
 
   // WebSocket 이벤트 핸들러
   const handleWsEvent = useCallback((event: WsEvent) => {
@@ -99,21 +150,39 @@ export default function HomePage() {
         : new Set(currentProjects.map((p) => p.id));
       if (!projectIds.has(event.payload.project_id)) return;
 
-      setTasks((prev) => {
-        if (prev.some((t) => t.id === event.payload.id)) return prev;
-        return [...prev, event.payload];
-      });
+      if (event.payload.status === 'done') {
+        // New task created as done (uncommon) — reload done page
+        reloadDoneTasks();
+      } else {
+        setTasks((prev) => {
+          if (prev.some((t) => t.id === event.payload.id)) return prev;
+          return [...prev, event.payload];
+        });
+      }
     } else if (event.type === 'task:updated') {
-      setTasks((prev) =>
-        prev.map((t) => (t.id === event.payload.id ? event.payload : t)),
-      );
+      const payload = event.payload;
+
+      if (payload.status === 'done') {
+        // Task transitioned to done — remove from non-done tasks, reload done page
+        setTasks((prev) => prev.filter((t) => t.id !== payload.id));
+        reloadDoneTasks();
+      } else {
+        // Non-done update — update in tasks list
+        setTasks((prev) => {
+          const exists = prev.some((t) => t.id === payload.id);
+          if (exists) {
+            return prev.map((t) => (t.id === payload.id ? payload : t));
+          }
+          // Defensive: task not in non-done list yet (e.g. was done, now undone)
+          return [...prev, payload];
+        });
+      }
+
       setSelectedTask((prev) =>
-        prev?.id === event.payload.id ? event.payload : prev,
+        prev?.id === payload.id ? payload : prev,
       );
     } else if (event.type === 'comment:added') {
       setTaskComments((prev) => {
-        // Use updater function to avoid stale closure over selectedTask
-        // We check task_id against the comment's task_id
         if (!prev.some((c) => c.id === event.payload.id)) {
           return [...prev, event.payload];
         }
@@ -121,9 +190,9 @@ export default function HomePage() {
       });
     }
     // dependency:added / dependency:removed are handled by task detail reload
-  }, []);
+  }, [reloadDoneTasks]);
 
-  useWebSocket(handleWsEvent, reloadTasks);
+  useWebSocket(handleWsEvent, reloadAll);
 
   // 상대시간 갱신 타이머
   useEffect(() => {
@@ -135,12 +204,12 @@ export default function HomePage() {
   useEffect(() => {
     function handleVisibilityChange() {
       if (document.visibilityState === 'visible') {
-        reloadTasks();
+        reloadAll();
       }
     }
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [reloadTasks]);
+  }, [reloadAll]);
 
   // 초기 워크스페이스 로드
   useEffect(() => {
@@ -155,20 +224,33 @@ export default function HomePage() {
         .then((data) => {
           setProjects(data);
           setSelectedProject('');
-          setTasks([]); // 필터 잔류 방지: 프로젝트 목록 변경 시 태스크 초기화
+          setTasks([]);
+          setDoneTasks([]);
+          setDoneTotal(0);
+          setDoneTotalAll(0);
+          setDonePage(1);
+          setDoneSearch('');
         })
         .catch(console.error);
     } else {
       if (workspaces.length === 0) {
         setProjects([]);
         setTasks([]);
+        setDoneTasks([]);
+        setDoneTotal(0);
+        setDoneTotalAll(0);
         return;
       }
       Promise.all(workspaces.map((ws) => api.getProjects(ws.id)))
         .then((results) => {
           setProjects(results.flat());
           setSelectedProject('');
-          setTasks([]); // 필터 잔류 방지
+          setTasks([]);
+          setDoneTasks([]);
+          setDoneTotal(0);
+          setDoneTotalAll(0);
+          setDonePage(1);
+          setDoneSearch('');
         })
         .catch(console.error);
     }
@@ -185,14 +267,43 @@ export default function HomePage() {
     }
   }, [selectedProject]);
 
-  // 프로젝트 변경 시 태스크 로드
+  // 프로젝트 변경 시 태스크 로드 (non-done) — role 필터는 프론트에서 처리
   useEffect(() => {
     if (!selectedProject && projects.length === 0) {
       setTasks([]);
       return;
     }
     reloadTasks();
-  }, [selectedProject, selectedRole, projects, reloadTasks]);
+  }, [selectedProject, projects, reloadTasks]);
+
+  // 프로젝트 변경 시 Done 초기화 + 로드
+  useEffect(() => {
+    setDonePage(1);
+    setDoneSearch('');
+    if (!selectedProject && projects.length === 0) {
+      setDoneTasks([]);
+      setDoneTotal(0);
+      setDoneTotalAll(0);
+      return;
+    }
+    reloadDoneTasks(1, '');
+  }, [selectedProject, projects, reloadDoneTasks]);
+
+  // Done 페이지 변경 시 재로드
+  function handleDonePageChange(page: number) {
+    setDonePage(page);
+    reloadDoneTasks(page);
+  }
+
+  // Done 검색 변경 (debounce 적용)
+  function handleDoneSearchChange(search: string) {
+    setDoneSearch(search);
+    if (doneSearchTimerRef.current) clearTimeout(doneSearchTimerRef.current);
+    doneSearchTimerRef.current = setTimeout(() => {
+      setDonePage(1);
+      reloadDoneTasks(1, search);
+    }, DONE_SEARCH_DEBOUNCE_MS);
+  }
 
   // 태스크 클릭: 상세 + 댓글 로드
   async function handleTaskClick(task: Task) {
@@ -247,6 +358,11 @@ export default function HomePage() {
 
   function handleRoleChange(role: string) {
     setSelectedRole(role);
+    // Role 변경 시 Done 페이지 초기화 + 재로드 (서버에서 role 필터 적용)
+    setDonePage(1);
+    // ref는 다음 렌더 전에 갱신되지 않으므로 직접 ref 업데이트 후 재로드
+    selectedRoleRef.current = role;
+    reloadDoneTasks(1);
   }
 
   async function handleAutoApproveChange(value: boolean) {
@@ -268,6 +384,11 @@ export default function HomePage() {
     setTaskDependents([]);
   }, []);
 
+  // Role 필터는 프론트에서 적용 (StatsBar는 전체, 칸반 보드는 필터된 결과)
+  const filteredTasks = selectedRole
+    ? tasks.filter((t) => t.role === selectedRole)
+    : tasks;
+
   return (
     <div className="flex h-screen flex-col overflow-hidden">
       {/* 헤더 */}
@@ -283,7 +404,7 @@ export default function HomePage() {
           </div>
         </div>
 
-        <StatsBar tasks={tasks} />
+        <StatsBar tasks={tasks} doneTotal={doneTotalAll} />
       </header>
 
       {/* 필터 바 */}
@@ -304,7 +425,17 @@ export default function HomePage() {
 
       {/* 칸반 보드 */}
       <main className="flex min-h-0 flex-1 overflow-hidden">
-        <KanbanBoard tasks={tasks} onTaskClick={handleTaskClick} />
+        <KanbanBoard
+          tasks={filteredTasks}
+          doneTasks={doneTasks}
+          doneTotal={doneTotal}
+          donePage={donePage}
+          donePageSize={DONE_PAGE_SIZE}
+          doneSearch={doneSearch}
+          onDonePageChange={handleDonePageChange}
+          onDoneSearchChange={handleDoneSearchChange}
+          onTaskClick={handleTaskClick}
+        />
       </main>
 
       {/* 푸터 */}
@@ -321,7 +452,6 @@ export default function HomePage() {
           comments={taskComments}
           dependencies={taskDependencies}
           dependents={taskDependents}
-          allTasks={tasks}
           onClose={handleCloseModal}
         />
       )}

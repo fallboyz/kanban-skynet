@@ -1,15 +1,14 @@
 'use client';
 
 import { useEffect } from 'react';
-import type { Comment, Task, TaskPriority, TaskRole, TaskStatus } from '@/types';
+import type { Comment, DependencyInfo, Task, TaskPriority, TaskRole, TaskStatus } from '@/types';
 import { formatRelativeTime } from '@/lib/utils';
 
 interface TaskDetailModalProps {
   task: Task;
   comments: Comment[];
-  dependencies: string[];
-  dependents: string[];
-  allTasks: Task[];
+  dependencies: DependencyInfo[];
+  dependents: DependencyInfo[];
   onClose: () => void;
 }
 
@@ -48,7 +47,6 @@ export function TaskDetailModal({
   comments,
   dependencies,
   dependents,
-  allTasks,
   onClose,
 }: Readonly<TaskDetailModalProps>) {
   const grade = gradeConfig[task.priority];
@@ -164,22 +162,21 @@ export function TaskDetailModal({
                   <div>
                     <p className="mb-1 text-xs text-stone-400">Depends on:</p>
                     <div className="flex flex-col gap-1">
-                      {dependencies.map((depId) => {
-                        const depTask = allTasks.find((t) => t.id === depId);
-                        const depStatus = depTask ? statusConfig[depTask.status] : null;
+                      {dependencies.map((dep) => {
+                        const depStatus = statusConfig[dep.status];
                         return (
                           <div
-                            key={depId}
+                            key={dep.id}
                             className="flex items-center gap-2 rounded-lg border border-stone-100 bg-stone-50 px-2.5 py-1.5 text-sm"
                           >
                             <span
-                              className={`inline-block h-2 w-2 shrink-0 rounded-full ${depStatusDotColor(depTask?.status)}`}
+                              className={`inline-block h-2 w-2 shrink-0 rounded-full ${depStatusDotColor(dep.status)}`}
                             />
                             <span className="truncate text-stone-600">
-                              {depTask?.title ?? depId}
+                              {dep.title}
                             </span>
-                            <span className={`ml-auto shrink-0 text-xs ${depStatus?.className ?? 'text-stone-400'}`}>
-                              {depStatus?.label ?? 'unknown'}
+                            <span className={`ml-auto shrink-0 text-xs ${depStatus.className}`}>
+                              {depStatus.label}
                             </span>
                           </div>
                         );
@@ -191,19 +188,18 @@ export function TaskDetailModal({
                   <div>
                     <p className="mb-1 text-xs text-stone-400">Blocks:</p>
                     <div className="flex flex-col gap-1">
-                      {dependents.map((depId) => {
-                        const depTask = allTasks.find((t) => t.id === depId);
-                        const depStatus = depTask ? statusConfig[depTask.status] : null;
+                      {dependents.map((dep) => {
+                        const depStatus = statusConfig[dep.status];
                         return (
                           <div
-                            key={depId}
+                            key={dep.id}
                             className="flex items-center gap-2 rounded-lg border border-stone-100 bg-stone-50 px-2.5 py-1.5 text-sm"
                           >
                             <span className="truncate text-stone-600">
-                              {depTask?.title ?? depId}
+                              {dep.title}
                             </span>
-                            <span className={`ml-auto shrink-0 text-xs ${depStatus?.className ?? 'text-stone-400'}`}>
-                              {depStatus?.label ?? 'unknown'}
+                            <span className={`ml-auto shrink-0 text-xs ${depStatus.className}`}>
+                              {depStatus.label}
                             </span>
                           </div>
                         );

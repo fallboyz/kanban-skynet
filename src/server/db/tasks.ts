@@ -229,6 +229,60 @@ export function transitionTaskStatus(taskId: string, newStatus: string): Transit
 }
 
 // ============================================================
+// Paginated done tasks query (for Done column pagination)
+// ============================================================
+
+const DONE_DEFAULT_PAGE_SIZE = 20;
+
+export interface DoneTasksResult {
+  tasks: Task[];
+  total: number;
+  total_all: number;
+}
+
+export function getDoneTasksPaginated(
+  projectIds: string[],
+  options: { page: number; pageSize?: number; search?: string; role?: string },
+): DoneTasksResult {
+  if (projectIds.length === 0) return { tasks: [], total: 0, total_all: 0 };
+
+  const pageSize = options.pageSize ?? DONE_DEFAULT_PAGE_SIZE;
+  const offset = (options.page - 1) * pageSize;
+
+  const placeholders = projectIds.map(() => '?').join(', ');
+  const baseConditions: string[] = [`status = 'done'`, `project_id IN (${placeholders})`];
+  const baseParams: unknown[] = [...projectIds];
+
+  // total_all: role/search 조건 없이 전체 done 개수 (StatsBar용)
+  const baseWhere = baseConditions.join(' AND ');
+  const { cnt: totalAll } = db.prepare(`SELECT COUNT(*) AS cnt FROM tasks WHERE ${baseWhere}`).get(...baseParams) as { cnt: number };
+
+  const conditions = [...baseConditions];
+  const params = [...baseParams];
+
+  if (options.role) {
+    conditions.push('role = ?');
+    params.push(options.role);
+  }
+
+  if (options.search) {
+    const pattern = `%${options.search}%`;
+    conditions.push('(title LIKE ? OR description LIKE ?)');
+    params.push(pattern, pattern);
+  }
+
+  const where = conditions.join(' AND ');
+
+  const countSql = `SELECT COUNT(*) AS cnt FROM tasks WHERE ${where}`;
+  const { cnt } = db.prepare(countSql).get(...params) as { cnt: number };
+
+  const dataSql = `SELECT * FROM tasks WHERE ${where} ORDER BY updated_at DESC LIMIT ? OFFSET ?`;
+  const rows = db.prepare(dataSql).all(...params, pageSize, offset) as TaskRow[];
+
+  return { tasks: rows.map(rowToTask), total: cnt, total_all: totalAll };
+}
+
+// ============================================================
 // Cross-project validation for parent_id
 // ============================================================
 

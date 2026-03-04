@@ -56,6 +56,7 @@ Orchestrator 에이전트
 - **역할 기반 필터**: ARCHITECT/DATABASE/BACKEND/FRONTEND/SECURITY/QA별 필터링
 - **Auto Approve**: ON이면 오케스트레이터가 플랜 수립 후 즉시 서브 태스크 생성, OFF면 사용자 승인 후 생성
 - **작업 히스토리**: 모든 상태 전환, 코멘트, blocked 사유가 태스크 단위로 영구 보존
+- **Done 검색/페이지네이션**: 완료된 태스크가 수백 개여도 검색과 페이지 네비게이션으로 빠르게 탐색
 
 ## 기술 스택
 

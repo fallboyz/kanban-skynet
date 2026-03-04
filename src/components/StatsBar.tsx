@@ -4,21 +4,23 @@ import { useMemo } from 'react';
 import type { Task } from '@/types';
 
 interface StatsBarProps {
-  tasks: Task[];
+  tasks: Task[];     // non-done tasks (ready + in_progress + review)
+  doneTotal: number; // total done count from server pagination
 }
 
-export function StatsBar({ tasks }: Readonly<StatsBarProps>) {
+export function StatsBar({ tasks, doneTotal }: Readonly<StatsBarProps>) {
   const { total, done, active, blocked, rate } = useMemo(() => {
     const visible = tasks.filter((t) => t.status !== 'cancelled');
-    const t = visible.length;
-    const d = visible.filter((tk) => tk.status === 'done').length;
+    const nonDoneCount = visible.length;
+    const d = doneTotal;
+    const t = nonDoneCount + d;
     const a = visible.filter(
       (tk) => tk.status === 'in_progress' || tk.status === 'review',
     ).length;
     const b = visible.filter((tk) => tk.is_blocked).length;
     const r = t > 0 ? Math.round((d / t) * 100) : 0;
     return { total: t, done: d, active: a, blocked: b, rate: r };
-  }, [tasks]);
+  }, [tasks, doneTotal]);
 
   return (
     <div className="flex items-center gap-3">

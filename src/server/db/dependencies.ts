@@ -1,4 +1,7 @@
+import type { DependencyInfo } from '../types.js';
 import { db } from './connection.js';
+
+export type { DependencyInfo };
 
 const stmtInsertDep = db.prepare(
   'INSERT OR IGNORE INTO task_dependencies (task_id, depends_on) VALUES (?, ?)'
@@ -11,6 +14,18 @@ const stmtGetDependencies = db.prepare(
 );
 const stmtGetDependents = db.prepare(
   'SELECT task_id FROM task_dependencies WHERE depends_on = ?'
+);
+const stmtGetDependenciesWithInfo = db.prepare(
+  `SELECT t.id, t.title, t.status
+   FROM task_dependencies td
+   JOIN tasks t ON td.depends_on = t.id
+   WHERE td.task_id = ?`
+);
+const stmtGetDependentsWithInfo = db.prepare(
+  `SELECT t.id, t.title, t.status
+   FROM task_dependencies td
+   JOIN tasks t ON td.task_id = t.id
+   WHERE td.depends_on = ?`
 );
 const stmtUnmetDeps = db.prepare(
   `SELECT COUNT(*) as cnt FROM task_dependencies td
@@ -37,6 +52,14 @@ export function getDependencies(taskId: string): string[] {
 export function getDependents(taskId: string): string[] {
   const rows = stmtGetDependents.all(taskId) as { task_id: string }[];
   return rows.map((r) => r.task_id);
+}
+
+export function getDependenciesWithInfo(taskId: string): DependencyInfo[] {
+  return stmtGetDependenciesWithInfo.all(taskId) as DependencyInfo[];
+}
+
+export function getDependentsWithInfo(taskId: string): DependencyInfo[] {
+  return stmtGetDependentsWithInfo.all(taskId) as DependencyInfo[];
 }
 
 export function areDependenciesMet(taskId: string): boolean {

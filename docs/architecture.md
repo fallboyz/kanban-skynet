@@ -45,6 +45,7 @@ Workspace (큰 서비스/팀 단위 — 예: 쇼핑몰 앱)
 - Workspace / Project / Role 필터링
 - 프로젝트별 auto_approve 토글
 - 게임카드 스타일 태스크 카드 (등급 배지, 역할별 색상, 호버 효과)
+- Done 컬럼: 서버 페이지네이션 + 검색 (나머지 3개 컬럼은 전체 로드)
 
 ### Hono API (src/server/api/)
 - REST API 엔드포인트 제공 (웹 UI에서 fetch로 호출)
