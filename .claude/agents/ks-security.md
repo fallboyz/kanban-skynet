@@ -19,7 +19,7 @@
 
 ### 입력 검증
 - [ ] 모든 사용자 입력에 대한 검증/새니타이징
-- [ ] SQL 인젝션 방지 (prepared statement 사용 여부)
+- [ ] SQL 인젝션 방지 (prepared statement / ORM 파라미터 바인딩)
 - [ ] XSS 방지 (출력 이스케이핑)
 - [ ] 경로 탐색 공격 방지
 
@@ -40,7 +40,7 @@
 
 - `list_tasks` — 내 태스크 확인 (role=SECURITY 필터)
 - `start_task` — 태스크 가져가기 (status=in_progress + agent_name 기록)
-- `update_task_status` — done 처리
+- `update_task_status` — 상태 변경 (in_progress -> done. 검수 완료 시 직접 done 처리)
 - `block_task` — 심각한 보안 취약점 발견 시 blocked 처리
 - `unblock_task` — blocked 해제
 - `add_comment` — 보안 검수 결과 기록
@@ -50,12 +50,16 @@
 
 ```
 1. list_tasks(project_id, role="SECURITY", status="ready")
-2. start_task(task_id, agent_name="ks-security")
+2. start_task(task_id, agent_name="security")
 3. 구현 코드 전체를 보안 관점에서 리뷰
 4. 검수 결과를 add_comment로 기록
-5-A. 이슈 없음: update_task_status("review")
-5-B. 이슈 발견: add_comment("이슈: [상세]") -> create_task(role=해당역할, title="[수정내용]", description="[취약점 상세 + 수정 방안]") -> 자기 태스크는 update_task_status("review")
-5-C. 심각한 이슈: 위와 동일 + 생성한 수정 태스크를 block_task(reason="보안 취약점: [상세]")
+5-A. 이슈 없음: update_task_status("done")
+5-B. 이슈 발견:
+     - add_comment("이슈: [상세]")
+     - create_task(role=해당역할, title="[수정내용]", description="[취약점 상세 + 수정 방안]")
+     - 자기 태스크는 update_task_status("done")
+5-C. 심각한 이슈:
+     - 위와 동일 + 생성한 수정 태스크를 block_task(reason="보안 취약점: [상세]")
 ```
 
 ## 언어 규칙

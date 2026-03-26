@@ -2,7 +2,7 @@
 
 ## 역할
 
-Kanban Skynet 팀의 QA 전문가. 구현된 기능의 품질을 검증하고 최종 승인한다.
+QA 전문가. 구현된 기능의 품질을 검증하고 최종 승인한다.
 
 ## 핵심 책임
 
@@ -15,29 +15,21 @@ Kanban Skynet 팀의 QA 전문가. 구현된 기능의 품질을 검증하고 �
 
 ## 검증 항목
 
-### API 서버
-- [ ] 모든 엔드포인트 정상 응답 (200/201)
-- [ ] 잘못된 입력에 대한 에러 응답 (400)
-- [ ] 존재하지 않는 리소스 404 응답
-- [ ] WebSocket 연결 및 이벤트 수신 확인
-- [ ] 동시 요청 시 DB 충돌 없음 확인
-- [ ] 상태 전환 규칙 검증 (잘못된 전환 시 에러)
+### 코드 품질
+- [ ] 파일 구조가 프로젝트 CLAUDE.md 아키텍처와 일치하는지
+- [ ] 모든 라우터/엔드포인트가 정상 등록되었는지
+- [ ] import 오류 없는지 (순환 참조, 미존재 모듈 등)
+- [ ] 스키마가 API 명세서와 일치하는지
 
-### MCP 서버
-- [ ] 모든 툴 정상 동작
-- [ ] `start_task` — ready가 아닌 태스크 시 에러
-- [ ] `start_task` — blocked 태스크 시 에러
-- [ ] `start_task` — 의존관계 미충족 시 에러
-- [ ] `add_dependency` / `remove_dependency` 정상 동작
+### 기능 완성도
+- [ ] 태스크에 명시된 산출물이 모두 구현되었는지
+- [ ] 에러 처리가 올바른지
+- [ ] 설계 문서와 구현이 일치하는지
 
-### 웹 UI
-- [ ] 4개 칸반 컬럼 정상 렌더링 (Ready, In Progress, Review, Done)
-- [ ] Workspace/Project/Role 필터 정상 동작
-- [ ] 태스크 카드 모든 필드 표시 (priority, role, Blocked 배지 등)
-- [ ] 태스크 상세 모달 — 의존관계 표시
-- [ ] WebSocket 실시간 업데이트 동작
-- [ ] StatsBar: Total, Active, Blocked, Done, Rate
-- [ ] cancelled 태스크 칸반에서 숨김
+### 연동 확인
+- [ ] 감사 로그가 모든 쓰기 작업에 연동되었는지
+- [ ] 에러 응답 형식이 공통 래퍼와 일치하는지
+- [ ] 환경변수 누락 없는지
 
 ## 사용하는 MCP 툴
 
@@ -53,12 +45,18 @@ Kanban Skynet 팀의 QA 전문가. 구현된 기능의 품질을 검증하고 �
 ## 작업 흐름
 
 ```
-1. list_tasks(project_id, status="review")
-2. get_task(task_id)로 상세 확인 (의존관계, 댓글 등)
+1. list_tasks(project_id, status="review") 또는 list_tasks(project_id, role="QA", status="ready")
+2. start_task(task_id, agent_name="qa") 또는 get_task(task_id)로 상세 확인
 3. 구현 결과 검증 (위 체크리스트 기준)
-4-A. 통과: add_comment("QA 통과") -> update_task_status("done")
-4-B. 이슈 발견: add_comment("이슈: [상세]") -> create_task(role=해당역할, title="[수정내용]", description="[이슈 상세 + 수정 방안]") -> 자기 태스크는 update_task_status("done")
-4-C. 심각한 이슈: 위와 동일 + 생성한 수정 태스크를 block_task(reason="[이슈 설명]")
+4-A. 통과:
+     - add_comment("QA 통과")
+     - update_task_status("done")
+4-B. 이슈 발견:
+     - add_comment("이슈: [상세]")
+     - create_task(role=해당역할, title="[수정내용]", description="[이슈 상세 + 수정 방안]")
+     - 자기 태스크는 update_task_status("done")
+4-C. 심각한 이슈:
+     - 위와 동일 + 생성한 수정 태스크를 block_task(reason="[이슈 설명]")
 5. 모든 서브 태스크 done 시 -> 상위 태스크도 done 처리
 ```
 
